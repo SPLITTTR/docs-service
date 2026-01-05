@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collab Test Client</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .panel {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { margin-top: 0; color: #333; }
+        h3 { margin-top: 0; color: #666; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        textarea {
+            height: 300px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .status.connected { background: #d4edda; color: #155724; }
+        .status.disconnected { background: #f8d7da; color: #721c24; }
+        .users {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .user-badge {
+            padding: 5px 10px;
+            background: #e9ecef;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .user-badge.me { background: #007bff; color: white; }
+        #log {
+            height: 200px;
+            overflow-y: auto;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry { margin-bottom: 5px; }
+        .log-entry.sent { color: #6a9955; }
+        .log-entry.received { color: #569cd6; }
+        .log-entry.error { color: #f44747; }
+        .log-entry.info { color: #dcdcaa; }
+        .row { display: flex; gap: 10px; }
+        .row > * { flex: 1; }
+    </style>
+</head>
+<body>
+    <h1>📝 Collab Service Test Client</h1>
+
+    <div class="panel">
+        <h3>Connection</h3>
+        <div class="row">
+            <div>
+                <label>WebSocket URL</label>
+                <input type="text" id="wsUrl" value="ws://localhost:8081/ws/docs">
+            </div>
+            <div>
+                <label>User ID</label>
+                <input type="text" id="userId" value="user1">
+            </div>
+            <div>
+                <label>Document ID</label>
+                <input type="text" id="documentId" value="">
+            </div>
+        </div>
+        <button class="btn-primary" id="connectBtn" onclick="connect()">Connect</button>
+        <button class="btn-danger" id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+        <button class="btn-success" onclick="createDocument()">Create New Document</button>
+        <div id="status" class="status disconnected">Disconnected</div>
+    </div>
+
+    <div class="panel">
+        <h3>Active Users</h3>
+        <div id="users" class="users">
+            <span style="color: #999;">No users connected</span>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h3>Document Editor</h3>
+        <textarea id="editor" placeholder="Connect to a document to start editing..." disabled></textarea>
+        <div style="color: #666; font-size: 12px;">
+            Cursor position: <span id="cursorPos">0</span> | 
+            Version: <span id="version">-</span>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h3>Message Log</h3>
+        <div id="log"></div>
+        <button onclick="document.getElementById('log').innerHTML = ''">Clear Log</button>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentUserId = null;
+        let currentDocId = null;
+        let isLocalChange = false;
+
+        const editor = document.getElementById('editor');
+        const log = document.getElementById('log');
+        const status = document.getElementById('status');
+        const usersDiv = document.getElementById('users');
+
+        // Create a new document via REST API
+        async function createDocument() {
+            const title = prompt('Document title:', 'Untitled');
+            if (!title) return;
+
+            try {
+                const res = await fetch('http://localhost:8080/api/documents', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: title,
+                        content: '',
+                        ownerId: document.getElementById('userId').value
+                    })
+                });
+                const doc = await res.json();
+                document.getElementById('documentId').value = doc.id;
+                logMessage('info', `Created document: ${doc.id}`);
+            } catch (e) {
+                logMessage('error', `Failed to create document: ${e.message}`);
+            }
+        }
+
+        function connect() {
+            const wsUrl = document.getElementById('wsUrl').value;
+            currentUserId = document.getElementById('userId').value;
+            currentDocId = document.getElementById('documentId').value;
+
+            if (!currentDocId) {
+                alert('Please enter a Document ID or create a new document');
+                return;
+            }
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                logMessage('info', 'WebSocket connected');
+                updateStatus(true);
+
+                // Send join message
+                send({
+                    type: 'join',
+                    documentId: currentDocId,
+                    userId: currentUserId
+                });
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                logMessage('received', JSON.stringify(msg, null, 2));
+                handleServerMessage(msg);
+            };
+
+            ws.onclose = () => {
+                logMessage('info', 'WebSocket disconnected');
+                updateStatus(false);
+                editor.disabled = true;
+            };
+
+            ws.onerror = (error) => {
+                logMessage('error', 'WebSocket error');
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                send({ type: 'leave', documentId: currentDocId, userId: currentUserId });
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function send(obj) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const json = JSON.stringify(obj);
+                ws.send(json);
+                logMessage('sent', JSON.stringify(obj, null, 2));
+            }
+        }
+
+        function handleServerMessage(msg) {
+            switch (msg.type) {
+                case 'init':
+                    editor.value = msg.content || '';
+                    editor.disabled = false;
+                    document.getElementById('version').textContent = msg.version;
+                    updateUsers(msg.activeUsers || []);
+                    break;
+
+                case 'edit':
+                    if (msg.userId !== currentUserId) {
+                        applyRemoteEdit(msg.edit);
+                    }
+                    break;
+
+                case 'cursor':
+                    // Could show other users' cursors here
+                    break;
+
+                case 'user_joined':
+                    logMessage('info', `User joined: ${msg.userId}`);
+                    if (msg.activeUsers) updateUsers(msg.activeUsers);
+                    break;
+
+                case 'user_left':
+                    logMessage('info', `User left: ${msg.userId}`);
+                    break;
+
+                case 'error':
+                    logMessage('error', msg.error);
+                    break;
+            }
+        }
+
+        function applyRemoteEdit(edit) {
+            isLocalChange = true;
+            const start = editor.selectionStart;
+            const end = editor.selectionEnd;
+            let text = editor.value;
+
+            switch (edit.type) {
+                case 'insert':
+                    text = text.slice(0, edit.position) + edit.content + text.slice(edit.position);
+                    break;
+                case 'delete':
+                    text = text.slice(0, edit.position) + text.slice(edit.position + edit.deleteCount);
+                    break;
+                case 'replace':
+                    text = text.slice(0, edit.position) + edit.content + text.slice(edit.position + edit.deleteCount);
+                    break;
+            }
+
+            editor.value = text;
+
+            // Try to preserve cursor position
+            editor.selectionStart = start;
+            editor.selectionEnd = end;
+            isLocalChange = false;
+        }
+
+        function updateUsers(users) {
+            if (!users || users.length === 0) {
+                usersDiv.innerHTML = '<span style="color: #999;">No users connected</span>';
+                return;
+            }
+            usersDiv.innerHTML = users.map(u =>
+                `<span class="user-badge ${u.userId === currentUserId ? 'me' : ''}">${u.userId}</span>`
+            ).join('');
+        }
+
+        function updateStatus(connected) {
+            status.textContent = connected ? 'Connected' : 'Disconnected';
+            status.className = 'status ' + (connected ? 'connected' : 'disconnected');
+            document.getElementById('connectBtn').disabled = connected;
+            document.getElementById('disconnectBtn').disabled = !connected;
+        }
+
+        function logMessage(type, message) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${type.toUpperCase()}: ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Track local edits
+        let lastValue = '';
+        editor.addEventListener('input', (e) => {
+            if (isLocalChange) return;
+
+            const newValue = editor.value;
+            const cursorPos = editor.selectionStart;
+
+            // Simple diff - detect insert or delete
+            if (newValue.length > lastValue.length) {
+                // Insert
+                const insertPos = findDiffStart(lastValue, newValue);
+                const insertedText = newValue.slice(insertPos, insertPos + (newValue.length - lastValue.length));
+
+                send({
+                    type: 'edit',
+                    documentId: currentDocId,
+                    userId: currentUserId,
+                    edit: {
+                        userId: currentUserId,
+                        type: 'insert',
+                        position: insertPos,
+                        content: insertedText,
+                        deleteCount: 0,
+                        clientVersion: 0
+                    }
+                });
+            } else if (newValue.length < lastValue.length) {
+                // Delete
+                const deletePos = findDiffStart(lastValue, newValue);
+                const deleteCount = lastValue.length - newValue.length;
+
+                send({
+                    type: 'edit',
+                    documentId: currentDocId,
+                    userId: currentUserId,
+                    edit: {
+                        userId: currentUserId,
+                        type: 'delete',
+                        position: deletePos,
+                        content: '',
+                        deleteCount: deleteCount,
+                        clientVersion: 0
+                    }
+                });
+            }
+
+            lastValue = newValue;
+        });
+
+        function findDiffStart(oldStr, newStr) {
+            let i = 0;
+            while (i < oldStr.length && i < newStr.length && oldStr[i] === newStr[i]) {
+                i++;
+            }
+            return i;
+        }
+
+        // Track cursor position
+        editor.addEventListener('keyup', updateCursor);
+        editor.addEventListener('click', updateCursor);
+
+        function updateCursor() {
+            document.getElementById('cursorPos').textContent = editor.selectionStart;
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                send({
+                    type: 'cursor',
+                    documentId: currentDocId,
+                    userId: currentUserId,
+                    cursorPosition: editor.selectionStart
+                });
+            }
+        }
+    </script>
+</body>
+</html>

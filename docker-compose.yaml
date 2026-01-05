@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+  collab-service:
+    build: .
+    ports:
+      - "8081:8081"
+    environment:
+      QUARKUS_REST_CLIENT_DOCUMENT_SERVICE_URL: http://host.docker.internal:8080
