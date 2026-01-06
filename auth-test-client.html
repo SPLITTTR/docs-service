@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auth Integration Test</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f2f5;
+        }
+        h1 { color: #333; margin-bottom: 10px; }
+        .subtitle { color: #666; margin-bottom: 30px; }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 800px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+        
+        .panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .panel h2 {
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f2f5;
+            font-size: 16px;
+            color: #444;
+        }
+        .panel.full-width {
+            grid-column: 1 / -1;
+        }
+        
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 12px;
+            transition: border-color 0.2s;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #4f46e5;
+        }
+        textarea {
+            min-height: 80px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            transition: all 0.2s;
+        }
+        button:hover { transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        
+        .btn-primary { background: #4f46e5; color: white; }
+        .btn-primary:hover { background: #4338ca; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-success:hover { background: #059669; }
+        .btn-warning { background: #f59e0b; color: white; }
+        .btn-warning:hover { background: #d97706; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-secondary { background: #6b7280; color: white; }
+        .btn-secondary:hover { background: #4b5563; }
+        
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+        .status-bar.disconnected { background: #fef2f2; color: #991b1b; }
+        .status-bar.connected { background: #f0fdf4; color: #166534; }
+        .status-bar.pending { background: #fffbeb; color: #92400e; }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        
+        .doc-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+        }
+        .doc-item {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f3f4f6;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.15s;
+        }
+        .doc-item:hover { background: #f9fafb; }
+        .doc-item:last-child { border-bottom: none; }
+        .doc-item.selected { background: #eef2ff; }
+        .doc-item .title { font-weight: 500; color: #333; }
+        .doc-item .meta { font-size: 11px; color: #888; }
+        .doc-item .actions { display: flex; gap: 5px; }
+        .doc-item .actions button {
+            padding: 4px 8px;
+            font-size: 11px;
+            margin: 0;
+        }
+        
+        #log {
+            height: 250px;
+            overflow-y: auto;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .log-entry { margin-bottom: 4px; }
+        .log-entry.info { color: #9cdcfe; }
+        .log-entry.success { color: #4ec9b0; }
+        .log-entry.error { color: #f48771; }
+        .log-entry.sent { color: #ce9178; }
+        .log-entry.received { color: #b5cea8; }
+        
+        .token-display {
+            font-family: monospace;
+            font-size: 11px;
+            background: #f3f4f6;
+            padding: 8px;
+            border-radius: 4px;
+            word-break: break-all;
+            max-height: 60px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+        
+        .collab-users {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .user-badge {
+            padding: 4px 10px;
+            background: #e5e7eb;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .user-badge.me { background: #4f46e5; color: white; }
+        
+        .editor-container {
+            position: relative;
+        }
+        #collab-editor {
+            min-height: 150px;
+            font-family: monospace;
+        }
+        .version-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #4f46e5;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 Auth Integration Test</h1>
+    <p class="subtitle">Test mdb-service + collab-service with Clerk JWT authentication</p>
+
+    <div class="grid">
+        <!-- Auth Panel -->
+        <div class="panel">
+            <h2>🎫 Authentication</h2>
+            <label>JWT Token (paste from Clerk)</label>
+            <textarea id="jwt-token" placeholder="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."></textarea>
+            
+            <button class="btn-primary" onclick="setToken()">Set Token</button>
+            <button class="btn-secondary" onclick="decodeToken()">Decode</button>
+            <button class="btn-warning" onclick="clearToken()">Clear</button>
+            
+            <div id="token-status" class="status-bar disconnected">
+                <span class="status-dot"></span>
+                <span>No token set</span>
+            </div>
+            
+            <div id="token-info" style="display:none;">
+                <label>Decoded Claims</label>
+                <div class="token-display" id="token-claims"></div>
+            </div>
+        </div>
+
+        <!-- Config Panel -->
+        <div class="panel">
+            <h2>⚙️ Service URLs</h2>
+            <label>mdb-service (REST)</label>
+            <input type="text" id="mdb-url" value="http://localhost:8080">
+            
+            <label>collab-service (WebSocket)</label>
+            <input type="text" id="collab-url" value="ws://localhost:8081/ws/docs">
+            
+            <label>User ID (from token or manual)</label>
+            <input type="text" id="user-id" placeholder="user_2abc123...">
+        </div>
+
+        <!-- Documents Panel -->
+        <div class="panel">
+            <h2>📄 Documents (mdb-service)</h2>
+            <button class="btn-primary" onclick="listDocuments()">List My Docs</button>
+            <button class="btn-success" onclick="showCreateDoc()">+ New</button>
+            
+            <div id="doc-list" class="doc-list" style="margin-top: 12px;">
+                <div class="empty-state">Click "List My Docs" to load</div>
+            </div>
+            
+            <div id="create-doc-form" style="display:none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb;">
+                <label>Title</label>
+                <input type="text" id="new-doc-title" placeholder="My Document">
+                <label>Content</label>
+                <textarea id="new-doc-content" placeholder="Document content..."></textarea>
+                <button class="btn-success" onclick="createDocument()">Create</button>
+                <button class="btn-secondary" onclick="hideCreateDoc()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Collab Panel -->
+        <div class="panel">
+            <h2>🤝 Real-time Collab (collab-service)</h2>
+            <div id="ws-status" class="status-bar disconnected">
+                <span class="status-dot"></span>
+                <span>Disconnected</span>
+            </div>
+            
+            <label>Document ID</label>
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <input type="text" id="collab-doc-id" placeholder="paste document ID" style="margin-bottom: 0;">
+                <button class="btn-primary" onclick="connectWebSocket()">Connect</button>
+                <button class="btn-danger" onclick="disconnectWebSocket()">Disconnect</button>
+            </div>
+            
+            <label>Active Users</label>
+            <div id="collab-users" class="collab-users">
+                <span style="color: #888; font-size: 12px;">Not connected</span>
+            </div>
+            
+            <label>Collaborative Editor</label>
+            <div class="editor-container">
+                <textarea id="collab-editor" placeholder="Connect to a document to start editing..." disabled></textarea>
+                <span class="version-badge" id="doc-version">v0</span>
+            </div>
+        </div>
+
+        <!-- Log Panel -->
+        <div class="panel full-width">
+            <h2>📋 Activity Log</h2>
+            <div id="log"></div>
+            <div style="margin-top: 10px;">
+                <button class="btn-secondary" onclick="clearLog()">Clear Log</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let token = null;
+        let ws = null;
+        let lastEditorValue = '';
+
+        // Logging
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const time = new Date().toLocaleTimeString();
+            entry.textContent = `[${time}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // Token Management
+        function setToken() {
+            const tokenInput = document.getElementById('jwt-token').value.trim();
+            if (!tokenInput) {
+                log('Please enter a JWT token', 'error');
+                return;
+            }
+            token = tokenInput;
+            updateTokenStatus(true);
+            decodeToken();
+            log('Token set successfully', 'success');
+        }
+
+        function clearToken() {
+            token = null;
+            document.getElementById('jwt-token').value = '';
+            updateTokenStatus(false);
+            document.getElementById('token-info').style.display = 'none';
+            log('Token cleared', 'info');
+        }
+
+        function decodeToken() {
+            const tokenInput = document.getElementById('jwt-token').value.trim() || token;
+            if (!tokenInput) {
+                log('No token to decode', 'error');
+                return;
+            }
+            
+            try {
+                const parts = tokenInput.split('.');
+                if (parts.length !== 3) throw new Error('Invalid JWT format');
+                
+                const payload = JSON.parse(atob(parts[1]));
+                document.getElementById('token-claims').textContent = JSON.stringify(payload, null, 2);
+                document.getElementById('token-info').style.display = 'block';
+                
+                // Auto-fill user ID from sub claim
+                if (payload.sub) {
+                    document.getElementById('user-id').value = payload.sub;
+                    log(`User ID extracted: ${payload.sub}`, 'success');
+                }
+                
+                // Check expiration
+                if (payload.exp) {
+                    const expDate = new Date(payload.exp * 1000);
+                    const now = new Date();
+                    if (expDate < now) {
+                        log(`⚠️ Token expired at ${expDate.toLocaleString()}`, 'error');
+                    } else {
+                        log(`Token valid until ${expDate.toLocaleString()}`, 'info');
+                    }
+                }
+            } catch (e) {
+                log(`Failed to decode token: ${e.message}`, 'error');
+            }
+        }
+
+        function updateTokenStatus(hasToken) {
+            const status = document.getElementById('token-status');
+            if (hasToken) {
+                status.className = 'status-bar connected';
+                status.innerHTML = '<span class="status-dot"></span><span>Token set ✓</span>';
+            } else {
+                status.className = 'status-bar disconnected';
+                status.innerHTML = '<span class="status-dot"></span><span>No token set</span>';
+            }
+        }
+
+        // API Helpers
+        async function apiCall(method, path, body = null) {
+            const baseUrl = document.getElementById('mdb-url').value;
+            const url = `${baseUrl}${path}`;
+            
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
+            log(`${method} ${path}`, 'sent');
+            
+            const options = { method, headers };
+            if (body) options.body = JSON.stringify(body);
+            
+            const res = await fetch(url, options);
+            const data = await res.json().catch(() => null);
+            
+            if (!res.ok) {
+                log(`Error ${res.status}: ${data?.error || res.statusText}`, 'error');
+                throw new Error(data?.error || res.statusText);
+            }
+            
+            log(`Response: ${res.status} OK`, 'received');
+            return data;
+        }
+
+        // Document Operations
+        async function listDocuments() {
+            try {
+                const docs = await apiCall('GET', '/api/documents');
+                renderDocList(docs);
+                log(`Loaded ${docs.length} documents`, 'success');
+            } catch (e) {
+                document.getElementById('doc-list').innerHTML = 
+                    `<div class="empty-state">Failed to load: ${e.message}</div>`;
+            }
+        }
+
+        function renderDocList(docs) {
+            const list = document.getElementById('doc-list');
+            if (!docs || docs.length === 0) {
+                list.innerHTML = '<div class="empty-state">No documents yet</div>';
+                return;
+            }
+            
+            list.innerHTML = docs.map(doc => `
+                <div class="doc-item" data-id="${doc.id}">
+                    <div>
+                        <div class="title">${escapeHtml(doc.title || 'Untitled')}</div>
+                        <div class="meta">${doc.id.substring(0, 8)}... • ${new Date(doc.updatedAt).toLocaleDateString()}</div>
+                    </div>
+                    <div class="actions">
+                        <button class="btn-primary" onclick="openInCollab('${doc.id}')">Collab</button>
+                        <button class="btn-danger" onclick="deleteDocument('${doc.id}')">Del</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showCreateDoc() {
+            document.getElementById('create-doc-form').style.display = 'block';
+        }
+
+        function hideCreateDoc() {
+            document.getElementById('create-doc-form').style.display = 'none';
+            document.getElementById('new-doc-title').value = '';
+            document.getElementById('new-doc-content').value = '';
+        }
+
+        async function createDocument() {
+            const title = document.getElementById('new-doc-title').value.trim() || 'Untitled';
+            const content = document.getElementById('new-doc-content').value;
+            
+            try {
+                const doc = await apiCall('POST', '/api/documents', { title, content });
+                log(`Created document: ${doc.id}`, 'success');
+                hideCreateDoc();
+                listDocuments();
+            } catch (e) {
+                // Error already logged
+            }
+        }
+
+        async function deleteDocument(id) {
+            if (!confirm('Delete this document?')) return;
+            try {
+                await apiCall('DELETE', `/api/documents/${id}`);
+                log(`Deleted document: ${id}`, 'success');
+                listDocuments();
+            } catch (e) {
+                // Error already logged
+            }
+        }
+
+        function openInCollab(docId) {
+            document.getElementById('collab-doc-id').value = docId;
+            log(`Document ID set for collab: ${docId}`, 'info');
+        }
+
+        // WebSocket / Collab
+        function connectWebSocket() {
+            const wsUrl = document.getElementById('collab-url').value;
+            const docId = document.getElementById('collab-doc-id').value.trim();
+            const userId = document.getElementById('user-id').value.trim();
+            
+            if (!docId) {
+                log('Please enter a document ID', 'error');
+                return;
+            }
+            if (!userId) {
+                log('Please set a user ID (from token or manual)', 'error');
+                return;
+            }
+            
+            if (ws) {
+                ws.close();
+            }
+            
+            updateWsStatus('pending', 'Connecting...');
+            log(`Connecting to ${wsUrl}`, 'info');
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                log('WebSocket connected', 'success');
+                updateWsStatus('connected', 'Connected');
+                
+                // Send join message
+                const joinMsg = {
+                    type: 'join',
+                    documentId: docId,
+                    userId: userId
+                };
+                ws.send(JSON.stringify(joinMsg));
+                log(`Sent join: ${docId}`, 'sent');
+            };
+            
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                log(`Received: ${msg.type}`, 'received');
+                handleServerMessage(msg);
+            };
+            
+            ws.onclose = () => {
+                log('WebSocket disconnected', 'info');
+                updateWsStatus('disconnected', 'Disconnected');
+                document.getElementById('collab-editor').disabled = true;
+            };
+            
+            ws.onerror = (err) => {
+                log('WebSocket error', 'error');
+                updateWsStatus('disconnected', 'Error');
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.send(JSON.stringify({ type: 'leave' }));
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function handleServerMessage(msg) {
+            const userId = document.getElementById('user-id').value;
+            
+            switch (msg.type) {
+                case 'init':
+                    document.getElementById('collab-editor').value = msg.content || '';
+                    document.getElementById('collab-editor').disabled = false;
+                    document.getElementById('doc-version').textContent = `v${msg.version}`;
+                    lastEditorValue = msg.content || '';
+                    updateCollabUsers(msg.activeUsers || [], userId);
+                    log(`Loaded document (v${msg.version})`, 'success');
+                    break;
+                    
+                case 'edit':
+                    if (msg.userId !== userId) {
+                        applyRemoteEdit(msg.edit);
+                    }
+                    break;
+                    
+                case 'user_joined':
+                    log(`User joined: ${msg.userId}`, 'info');
+                    updateCollabUsers(msg.activeUsers || [], userId);
+                    break;
+                    
+                case 'user_left':
+                    log(`User left: ${msg.userId}`, 'info');
+                    break;
+                    
+                case 'error':
+                    log(`Server error: ${msg.error}`, 'error');
+                    break;
+            }
+        }
+
+        function updateCollabUsers(users, currentUserId) {
+            const container = document.getElementById('collab-users');
+            if (!users || users.length === 0) {
+                container.innerHTML = '<span style="color: #888; font-size: 12px;">No users</span>';
+                return;
+            }
+            container.innerHTML = users.map(u => 
+                `<span class="user-badge ${u.userId === currentUserId ? 'me' : ''}">${u.userId.substring(0, 10)}...</span>`
+            ).join('');
+        }
+
+        function applyRemoteEdit(edit) {
+            const editor = document.getElementById('collab-editor');
+            let text = editor.value;
+            
+            switch (edit.type) {
+                case 'insert':
+                    text = text.slice(0, edit.position) + edit.content + text.slice(edit.position);
+                    break;
+                case 'delete':
+                    text = text.slice(0, edit.position) + text.slice(edit.position + edit.deleteCount);
+                    break;
+            }
+            
+            editor.value = text;
+            lastEditorValue = text;
+        }
+
+        function updateWsStatus(state, text) {
+            const status = document.getElementById('ws-status');
+            status.className = `status-bar ${state === 'connected' ? 'connected' : state === 'pending' ? 'pending' : 'disconnected'}`;
+            status.innerHTML = `<span class="status-dot"></span><span>${text}</span>`;
+        }
+
+        // Editor input handling
+        document.getElementById('collab-editor').addEventListener('input', (e) => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            
+            const newValue = e.target.value;
+            const docId = document.getElementById('collab-doc-id').value;
+            const userId = document.getElementById('user-id').value;
+            
+            // Simple diff
+            if (newValue.length > lastEditorValue.length) {
+                const pos = findDiffStart(lastEditorValue, newValue);
+                const inserted = newValue.slice(pos, pos + (newValue.length - lastEditorValue.length));
+                
+                ws.send(JSON.stringify({
+                    type: 'edit',
+                    documentId: docId,
+                    userId: userId,
+                    edit: {
+                        userId: userId,
+                        type: 'insert',
+                        position: pos,
+                        content: inserted,
+                        deleteCount: 0,
+                        clientVersion: 0
+                    }
+                }));
+            } else if (newValue.length < lastEditorValue.length) {
+                const pos = findDiffStart(lastEditorValue, newValue);
+                const deleteCount = lastEditorValue.length - newValue.length;
+                
+                ws.send(JSON.stringify({
+                    type: 'edit',
+                    documentId: docId,
+                    userId: userId,
+                    edit: {
+                        userId: userId,
+                        type: 'delete',
+                        position: pos,
+                        content: '',
+                        deleteCount: deleteCount,
+                        clientVersion: 0
+                    }
+                }));
+            }
+            
+            lastEditorValue = newValue;
+        });
+
+        function findDiffStart(oldStr, newStr) {
+            let i = 0;
+            while (i < oldStr.length && i < newStr.length && oldStr[i] === newStr[i]) i++;
+            return i;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // Init
+        log('Test client ready. Paste your Clerk JWT token to begin.', 'info');
+    </script>
+</body>
+</html>
