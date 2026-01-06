@@ -78,7 +78,7 @@ public class DocumentSession {
         String json = toJson(message);
         connections.forEach((userId, uc) -> {
             if (!userId.equals(excludeUserId)) {
-                uc.connection().sendText(json);
+                uc.connection().sendTextAndAwait(json); 
             }
         });
     }
@@ -86,7 +86,7 @@ public class DocumentSession {
     public void sendTo(String userId, Object message) {
         var uc = connections.get(userId);
         if (uc != null) {
-            uc.connection().sendText(toJson(message));
+            uc.connection().sendTextAndAwait(toJson(message));
         }
     }
 

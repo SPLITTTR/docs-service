@@ -231,6 +231,7 @@
             switch (msg.type) {
                 case 'init':
                     editor.value = msg.content || '';
+                    lastValue = editor.value;
                     editor.disabled = false;
                     document.getElementById('version').textContent = msg.version;
                     updateUsers(msg.activeUsers || []);
@@ -239,6 +240,7 @@
                 case 'edit':
                     if (msg.userId !== currentUserId) {
                         applyRemoteEdit(msg.edit);
+                        lastValue = editor.value; 
                     }
                     break;
 

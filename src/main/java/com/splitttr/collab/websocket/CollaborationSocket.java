@@ -8,6 +8,9 @@ import com.splitttr.collab.session.SessionManager;
 import io.quarkus.websockets.next.*;
 import jakarta.inject.Inject;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 @WebSocket(path = "/ws/docs")
 public class CollaborationSocket {
 
@@ -17,41 +20,51 @@ public class CollaborationSocket {
     @Inject
     SessionManager sessionManager;
 
-    // Connection state
-    private String userId;
-    private String documentId;
+    // Store connection state externally since the socket instance may not persist
+    private static final Map<String, ConnectionState> connectionStates = new ConcurrentHashMap<>();
+
+    record ConnectionState(String userId, String documentId) {}
 
     @OnOpen
     public void onOpen(WebSocketConnection connection) {
         // Wait for join message
+        System.out.println("WebSocket opened: " + connection.id());
     }
 
     @OnTextMessage
     public void onMessage(String messageJson, WebSocketConnection connection) {
         try {
             ClientMessage msg = mapper.readValue(messageJson, ClientMessage.class);
+            System.out.println("Received message: " + msg.type() + " from connection " + connection.id());
 
             switch (msg.type()) {
                 case "join" -> handleJoin(msg, connection);
-                case "edit" -> handleEdit(msg);
-                case "cursor" -> handleCursor(msg);
-                case "leave" -> handleLeave();
+                case "edit" -> handleEdit(msg, connection);
+                case "cursor" -> handleCursor(msg, connection);
+                case "leave" -> handleLeave(connection);
             }
         } catch (Exception e) {
+            e.printStackTrace();
             sendError(connection, e.getMessage());
         }
     }
 
     private void handleJoin(ClientMessage msg, WebSocketConnection connection) {
-        userId = msg.userId();
-        documentId = msg.documentId();
+        String userId = msg.userId();
+        String docId = msg.documentId();
 
-        DocumentSession session = sessionManager.getOrCreateSession(documentId);
+        // Store state for this connection
+        connectionStates.put(connection.id(), new ConnectionState(userId, docId));
+
+        DocumentSession session = sessionManager.getOrCreateSession(docId);
         session.addUser(userId, connection);
+
+        System.out.println("User " + userId + " joined document " + docId);
+        System.out.println("Active users: " + session.getActiveUsers());
 
         // Send initial state to joining user
         var initMsg = ServerMessage.init(
-            documentId,
+            docId,
             session.getContent(),
             session.getVersion(),
             session.getActiveUsers()
@@ -60,13 +73,19 @@ public class CollaborationSocket {
 
         // Notify others
         session.broadcast(
-            ServerMessage.userJoined(documentId, userId, session.getActiveUsers()),
+            ServerMessage.userJoined(docId, userId, session.getActiveUsers()),
             userId
         );
     }
 
-    private void handleEdit(ClientMessage msg) {
-        DocumentSession session = sessionManager.getSession(documentId);
+    private void handleEdit(ClientMessage msg, WebSocketConnection connection) {
+        ConnectionState state = connectionStates.get(connection.id());
+        if (state == null) {
+            sendError(connection, "Not joined to a document");
+            return;
+        }
+
+        DocumentSession session = sessionManager.getSession(state.documentId());
         if (session == null) return;
 
         EditOperation edit = msg.edit();
@@ -75,39 +94,45 @@ public class CollaborationSocket {
         session.applyEdit(edit.type(), edit.position(), edit.content(), edit.deleteCount());
 
         // Broadcast to others
-        session.broadcast(ServerMessage.edit(documentId, edit), userId);
+        session.broadcast(ServerMessage.edit(state.documentId(), edit), state.userId());
     }
 
-    private void handleCursor(ClientMessage msg) {
-        DocumentSession session = sessionManager.getSession(documentId);
+    private void handleCursor(ClientMessage msg, WebSocketConnection connection) {
+        ConnectionState state = connectionStates.get(connection.id());
+        if (state == null) return;
+
+        DocumentSession session = sessionManager.getSession(state.documentId());
         if (session == null) return;
 
-        session.updateCursor(userId, msg.cursorPosition());
+        session.updateCursor(state.userId(), msg.cursorPosition());
         session.broadcast(
-            ServerMessage.cursor(documentId, userId, msg.cursorPosition()),
-            userId
+            ServerMessage.cursor(state.documentId(), state.userId(), msg.cursorPosition()),
+            state.userId()
         );
     }
 
-    private void handleLeave() {
-        if (documentId == null) return;
+    private void handleLeave(WebSocketConnection connection) {
+        ConnectionState state = connectionStates.remove(connection.id());
+        if (state == null) return;
 
-        DocumentSession session = sessionManager.getSession(documentId);
+        DocumentSession session = sessionManager.getSession(state.documentId());
         if (session != null) {
-            session.removeUser(userId);
-            session.broadcast(ServerMessage.userLeft(documentId, userId), null);
-            sessionManager.removeSessionIfEmpty(documentId);
+            session.removeUser(state.userId());
+            session.broadcast(ServerMessage.userLeft(state.documentId(), state.userId()), null);
+            sessionManager.removeSessionIfEmpty(state.documentId());
         }
     }
 
     @OnClose
-    public void onClose() {
-        handleLeave();
+    public void onClose(WebSocketConnection connection) {
+        System.out.println("WebSocket closed: " + connection.id());
+        handleLeave(connection);
     }
 
     @OnError
-    public void onError(Throwable t) {
-        handleLeave();
+    public void onError(WebSocketConnection connection, Throwable t) {
+        System.err.println("WebSocket error: " + t.getMessage());
+        handleLeave(connection);
     }
 
     private void sendError(WebSocketConnection conn, String message) {
