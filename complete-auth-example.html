@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Auth Example</title>
+    
+    <!-- Load Clerk SDK -->
+    <script 
+        async 
+        crossorigin="anonymous"
+        data-clerk-publishable-key="pk_test_c2FjcmVkLXRlcm1pdGUtMjUuY2xlcmsuYWNjb3VudHMuZGV2JA"
+        src="https://cheerful-raccoon-70.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
+    </script>
+    
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 { margin-top: 0; }
+        button {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover { background: #4338ca; }
+        button.secondary {
+            background: #6b7280;
+        }
+        button.danger {
+            background: #ef4444;
+        }
+        .hidden { display: none; }
+        .user-info {
+            background: #f0fdf4;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .token-display {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .doc-list {
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        .doc-item {
+            padding: 15px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .doc-item:last-child { border-bottom: none; }
+        .doc-item:hover { background: #f9fafb; }
+        #editor {
+            width: 100%;
+            min-height: 200px;
+            padding: 15px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status.connected {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .status.disconnected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        .log-entry { margin-bottom: 5px; }
+        .log-entry.success { color: #4ade80; }
+        .log-entry.error { color: #f87171; }
+        .log-entry.info { color: #60a5fa; }
+    </style>
+</head>
+<body>
+    <!-- Sign In Section -->
+    <div id="auth-section" class="container">
+        <h1>🔐 Step 1: Sign In</h1>
+        <div id="sign-in"></div>
+    </div>
+
+    <!-- Authenticated Section (hidden until signed in) -->
+    <div id="app-section" class="container hidden">
+        <h1>✨ Authenticated Application</h1>
+        
+        <!-- User Info -->
+        <div class="user-info">
+            <strong>Signed in as:</strong> <span id="user-email"></span><br>
+            <strong>User ID:</strong> <span id="user-id"></span>
+            <button class="danger" onclick="signOut()">Sign Out</button>
+        </div>
+
+        <!-- JWT Token Display -->
+        <h3>🎫 Your JWT Token</h3>
+        <button onclick="refreshToken()">Refresh Token</button>
+        <button class="secondary" onclick="toggleToken()">Show/Hide Token</button>
+        <div id="token-container" class="token-display hidden"></div>
+
+        <!-- Documents Section -->
+        <h3>📄 Documents (mdb-service)</h3>
+        <button onclick="listDocuments()">Load My Documents</button>
+        <button onclick="createDocument()">+ Create Document</button>
+        <div id="doc-list"></div>
+
+        <!-- Collaboration Section -->
+        <h3>🤝 Real-time Collaboration (collab-service)</h3>
+        <div>
+            <label>Document ID:</label>
+            <input type="text" id="collab-doc-id" placeholder="Enter document ID" style="padding: 8px; margin: 0 10px; width: 300px;">
+            <button id="connect-btn" onclick="connectWebSocket()">Connect</button>
+            <button class="danger" id="disconnect-btn" onclick="disconnectWebSocket()" disabled>Disconnect</button>
+            <span id="ws-status" class="status disconnected">Disconnected</span>
+        </div>
+        
+        <div style="margin-top: 15px;">
+            <label><strong>Collaborative Editor:</strong></label>
+            <textarea id="editor" placeholder="Connect to a document to start editing..." disabled></textarea>
+        </div>
+
+        <!-- Log -->
+        <h3>📋 Activity Log</h3>
+        <div id="log" class="log"></div>
+        <button class="secondary" onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <script>
+        // Global state
+        let clerkToken = null;
+        let ws = null;
+        let documents = [];
+
+        // Logging
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const time = new Date().toLocaleTimeString();
+            entry.textContent = `[${time}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // Initialize Clerk
+        window.addEventListener('load', async () => {
+            log('Initializing Clerk...', 'info');
+            
+            await Clerk.load();
+            
+            if (Clerk.user) {
+                // User already signed in
+                log('User already signed in!', 'success');
+                await onSignedIn();
+            } else {
+                // Show sign-in form
+                log('Showing sign-in form', 'info');
+                Clerk.mountSignIn(document.getElementById('sign-in'));
+            }
+
+            // Listen for auth events
+            Clerk.addListener((event) => {
+                if (event.type === 'session.created') {
+                    log('Sign-in successful!', 'success');
+                    onSignedIn();
+                }
+            });
+        });
+
+        // When user signs in
+        async function onSignedIn() {
+            // Get token
+            clerkToken = await Clerk.session.getToken();
+            
+            log('Token obtained: ' + clerkToken.substring(0, 50) + '...', 'success');
+            
+            // Show authenticated section
+            document.getElementById('auth-section').classList.add('hidden');
+            document.getElementById('app-section').classList.remove('hidden');
+            
+            // Display user info
+            document.getElementById('user-email').textContent = Clerk.user.primaryEmailAddress?.emailAddress || 'N/A';
+            document.getElementById('user-id').textContent = Clerk.user.id;
+            
+            // Show token
+            document.getElementById('token-container').textContent = clerkToken;
+            
+            // Auto-load documents
+            await listDocuments();
+        }
+
+        // Sign out
+        async function signOut() {
+            await Clerk.signOut();
+            location.reload();
+        }
+
+        // Token management
+        function toggleToken() {
+            document.getElementById('token-container').classList.toggle('hidden');
+        }
+
+        async function refreshToken() {
+            clerkToken = await Clerk.session.getToken();
+            document.getElementById('token-container').textContent = clerkToken;
+            log('Token refreshed', 'success');
+        }
+
+        // API helper
+        async function apiCall(method, path, body = null) {
+            const url = `http://localhost:8080${path}`;
+            
+            log(`${method} ${path}`, 'info');
+            
+            const options = {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${clerkToken}`,  // ← THE MAGIC
+                    'Content-Type': 'application/json'
+                }
+            };
+            
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+            
+            try {
+                const response = await fetch(url, options);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                log(`Success: ${response.status}`, 'success');
+                return data;
+                
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        // Document operations
+        async function listDocuments() {
+            try {
+                documents = await apiCall('GET', '/api/documents');
+                
+                const listEl = document.getElementById('doc-list');
+                
+                if (documents.length === 0) {
+                    listEl.innerHTML = '<div class="doc-item">No documents yet. Create one!</div>';
+                    return;
+                }
+                
+                listEl.innerHTML = documents.map(doc => `
+                    <div class="doc-item">
+                        <div>
+                            <strong>${doc.title || 'Untitled'}</strong><br>
+                            <small>${doc.id}</small>
+                        </div>
+                        <button onclick="openDocument('${doc.id}')">Open in Collab</button>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                document.getElementById('doc-list').innerHTML = 
+                    '<div class="doc-item">Failed to load documents</div>';
+            }
+        }
+
+        async function createDocument() {
+            const title = prompt('Document title:', 'My Document');
+            if (!title) return;
+            
+            try {
+                const doc = await apiCall('POST', '/api/documents', {
+                    title,
+                    content: 'Start typing...'
+                });
+                
+                log(`Created document: ${doc.id}`, 'success');
+                await listDocuments();
+                
+                // Auto-open in collab
+                openDocument(doc.id);
+                
+            } catch (error) {
+                // Error already logged
+            }
+        }
+
+        function openDocument(docId) {
+            document.getElementById('collab-doc-id').value = docId;
+            log(`Document ${docId} ready for collaboration`, 'info');
+        }
+
+        // WebSocket / Collaboration
+        function connectWebSocket() {
+            const docId = document.getElementById('collab-doc-id').value.trim();
+            
+            if (!docId) {
+                alert('Please enter a document ID');
+                return;
+            }
+            
+            log('Connecting to WebSocket...', 'info');
+            
+            // Create WebSocket with token in URL
+            ws = new WebSocket(`ws://localhost:8081/ws/docs?token=${encodeURIComponent(clerkToken)}`);
+            
+            ws.onopen = () => {
+                log('WebSocket connected!', 'success');
+                updateWsStatus(true);
+                
+                // Send join message
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    documentId: docId,
+                    userId: Clerk.user.id  // Not strictly needed, server uses JWT
+                }));
+                
+                log(`Joining document: ${docId}`, 'info');
+            };
+            
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                log(`Received: ${msg.type}`, 'info');
+                
+                handleServerMessage(msg);
+            };
+            
+            ws.onclose = () => {
+                log('WebSocket disconnected', 'info');
+                updateWsStatus(false);
+            };
+            
+            ws.onerror = (error) => {
+                log('WebSocket error', 'error');
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function handleServerMessage(msg) {
+            switch (msg.type) {
+                case 'init':
+                    document.getElementById('editor').value = msg.content || '';
+                    document.getElementById('editor').disabled = false;
+                    log(`Document loaded (v${msg.version})`, 'success');
+                    break;
+                    
+                case 'user_joined':
+                    log(`User joined: ${msg.userId}`, 'info');
+                    break;
+                    
+                case 'user_left':
+                    log(`User left: ${msg.userId}`, 'info');
+                    break;
+                    
+                case 'error':
+                    log(`Server error: ${msg.error}`, 'error');
+                    break;
+            }
+        }
+
+        function updateWsStatus(connected) {
+            const statusEl = document.getElementById('ws-status');
+            statusEl.textContent = connected ? 'Connected' : 'Disconnected';
+            statusEl.className = `status ${connected ? 'connected' : 'disconnected'}`;
+            
+            document.getElementById('connect-btn').disabled = connected;
+            document.getElementById('disconnect-btn').disabled = !connected;
+        }
+
+        // Auto-refresh token every 5 minutes
+        setInterval(async () => {
+            if (Clerk.session) {
+                const oldToken = clerkToken;
+                clerkToken = await Clerk.session.getToken();
+                
+                if (oldToken !== clerkToken) {
+                    log('Token auto-refreshed', 'info');
+                    document.getElementById('token-container').textContent = clerkToken;
+                }
+            }
+        }, 5 * 60 * 1000);
+    </script>
+</body>
+</html>

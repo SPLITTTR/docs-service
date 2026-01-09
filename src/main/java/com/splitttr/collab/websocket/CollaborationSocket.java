@@ -3,6 +3,7 @@ package com.splitttr.collab.websocket;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.splitttr.collab.message.*;
+import com.splitttr.collab.security.AuthService;
 import com.splitttr.collab.session.DocumentSession;
 import com.splitttr.collab.session.SessionManager;
 import io.quarkus.websockets.next.*;
@@ -11,6 +12,10 @@ import jakarta.inject.Inject;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * WebSocket endpoint for real-time collaborative editing.
+ * Requires JWT authentication - user identity extracted from token.
+ */
 @WebSocket(path = "/ws/docs")
 public class CollaborationSocket {
 
@@ -20,6 +25,9 @@ public class CollaborationSocket {
     @Inject
     SessionManager sessionManager;
 
+    @Inject
+    AuthService authService;
+
     // Store connection state externally since the socket instance may not persist
     private static final Map<String, ConnectionState> connectionStates = new ConcurrentHashMap<>();
 
@@ -27,20 +35,38 @@ public class CollaborationSocket {
 
     @OnOpen
     public void onOpen(WebSocketConnection connection) {
-        // Wait for join message
-        System.out.println("WebSocket opened: " + connection.id());
+        // Verify authentication at connection time
+        if (!authService.isAuthenticated()) {
+            System.err.println("Unauthenticated WebSocket connection attempt: " + connection.id());
+            connection.closeAndAwait(1008, "Authentication required");
+            return;
+        }
+        
+        String userId = authService.getCurrentUserId();
+        System.out.println("Authenticated WebSocket opened: " + connection.id() + " (user: " + userId + ")");
     }
 
     @OnTextMessage
     public void onMessage(String messageJson, WebSocketConnection connection) {
+        // Double-check authentication (token could expire mid-session)
+        if (!authService.isAuthenticated()) {
+            System.err.println("Authentication expired for connection: " + connection.id());
+            connection.closeAndAwait(1008, "Authentication expired");
+            return;
+        }
+
         try {
             ClientMessage msg = mapper.readValue(messageJson, ClientMessage.class);
-            System.out.println("Received message: " + msg.type() + " from connection " + connection.id());
+            
+            // CRITICAL: Use authenticated user ID from JWT, not what client claims
+            String authenticatedUserId = authService.getCurrentUserId();
+            
+            System.out.println("Received message: " + msg.type() + " from authenticated user: " + authenticatedUserId);
 
             switch (msg.type()) {
-                case "join" -> handleJoin(msg, connection);
-                case "edit" -> handleEdit(msg, connection);
-                case "cursor" -> handleCursor(msg, connection);
+                case "join" -> handleJoin(msg, connection, authenticatedUserId);
+                case "edit" -> handleEdit(msg, connection, authenticatedUserId);
+                case "cursor" -> handleCursor(msg, connection, authenticatedUserId);
                 case "leave" -> handleLeave(connection);
             }
         } catch (Exception e) {
@@ -49,9 +75,15 @@ public class CollaborationSocket {
         }
     }
 
-    private void handleJoin(ClientMessage msg, WebSocketConnection connection) {
-        String userId = msg.userId();
+    private void handleJoin(ClientMessage msg, WebSocketConnection connection, String authenticatedUserId) {
+        // Use authenticated user ID from JWT, ignore what client sent
+        String userId = authenticatedUserId;
         String docId = msg.documentId();
+
+        if (docId == null || docId.isBlank()) {
+            sendError(connection, "Document ID required");
+            return;
+        }
 
         // Store state for this connection
         connectionStates.put(connection.id(), new ConnectionState(userId, docId));
@@ -78,35 +110,74 @@ public class CollaborationSocket {
         );
     }
 
-    private void handleEdit(ClientMessage msg, WebSocketConnection connection) {
+    private void handleEdit(ClientMessage msg, WebSocketConnection connection, String authenticatedUserId) {
         ConnectionState state = connectionStates.get(connection.id());
         if (state == null) {
             sendError(connection, "Not joined to a document");
             return;
         }
 
+        // Verify the user making the edit matches the authenticated user
+        if (!state.userId().equals(authenticatedUserId)) {
+            System.err.println("User ID mismatch: state=" + state.userId() + ", auth=" + authenticatedUserId);
+            sendError(connection, "Authentication mismatch");
+            return;
+        }
+
         DocumentSession session = sessionManager.getSession(state.documentId());
-        if (session == null) return;
+        if (session == null) {
+            sendError(connection, "Document session not found");
+            return;
+        }
 
         EditOperation edit = msg.edit();
+        if (edit == null) {
+            sendError(connection, "Edit operation required");
+            return;
+        }
+
+        // Ensure the edit operation has the correct authenticated user ID
+        EditOperation authenticatedEdit = new EditOperation(
+            authenticatedUserId,  // Use authenticated ID
+            edit.type(),
+            edit.position(),
+            edit.content(),
+            edit.deleteCount(),
+            edit.clientVersion()
+        );
 
         // Apply to in-memory state
-        session.applyEdit(edit.type(), edit.position(), edit.content(), edit.deleteCount());
+        session.applyEdit(
+            authenticatedEdit.type(), 
+            authenticatedEdit.position(), 
+            authenticatedEdit.content(), 
+            authenticatedEdit.deleteCount()
+        );
 
-        // Broadcast to others
-        session.broadcast(ServerMessage.edit(state.documentId(), edit), state.userId());
+        // Broadcast to others (excluding the sender)
+        session.broadcast(
+            ServerMessage.edit(state.documentId(), authenticatedEdit), 
+            state.userId()
+        );
     }
 
-    private void handleCursor(ClientMessage msg, WebSocketConnection connection) {
+    private void handleCursor(ClientMessage msg, WebSocketConnection connection, String authenticatedUserId) {
         ConnectionState state = connectionStates.get(connection.id());
         if (state == null) return;
 
+        if (!state.userId().equals(authenticatedUserId)) {
+            return; // Silently ignore cursor updates from mismatched users
+        }
+
         DocumentSession session = sessionManager.getSession(state.documentId());
         if (session == null) return;
 
-        session.updateCursor(state.userId(), msg.cursorPosition());
+        Integer cursorPos = msg.cursorPosition();
+        if (cursorPos == null) return;
+
+        session.updateCursor(state.userId(), cursorPos);
         session.broadcast(
-            ServerMessage.cursor(state.documentId(), state.userId(), msg.cursorPosition()),
+            ServerMessage.cursor(state.documentId(), state.userId(), cursorPos),
             state.userId()
         );
     }
@@ -118,7 +189,10 @@ public class CollaborationSocket {
         DocumentSession session = sessionManager.getSession(state.documentId());
         if (session != null) {
             session.removeUser(state.userId());
-            session.broadcast(ServerMessage.userLeft(state.documentId(), state.userId()), null);
+            session.broadcast(
+                ServerMessage.userLeft(state.documentId(), state.userId()), 
+                null
+            );
             sessionManager.removeSessionIfEmpty(state.documentId());
         }
     }
@@ -131,7 +205,7 @@ public class CollaborationSocket {
 
     @OnError
     public void onError(WebSocketConnection connection, Throwable t) {
-        System.err.println("WebSocket error: " + t.getMessage());
+        System.err.println("WebSocket error on " + connection.id() + ": " + t.getMessage());
         handleLeave(connection);
     }
 
