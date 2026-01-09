@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Editor</title>
+    
+    <!-- Load Clerk SDK -->
+    <script 
+        async 
+        crossorigin="anonymous"
+        data-clerk-publishable-key="pk_test_c2FjcmVkLXRlcm1pdGUtMjUuY2xlcmsuYWNjb3VudHMuZGV2JA"
+        src="https://sacred-termite-25.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+        }
+        
+        /* Header */
+        .header {
+            background: white;
+            border-bottom: 1px solid #e1e8ed;
+            padding: 0 30px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .back-btn {
+            padding: 8px 12px;
+            background: #f7fafc;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            color: #4a5568;
+        }
+        
+        .back-btn:hover {
+            background: #edf2f7;
+        }
+        
+        .doc-title-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        #doc-title {
+            font-size: 18px;
+            font-weight: 600;
+            border: none;
+            background: transparent;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+        
+        #doc-title:hover {
+            background: #f7fafc;
+        }
+        
+        #doc-title:focus {
+            outline: none;
+            background: white;
+            border: 1px solid #667eea;
+        }
+        
+        .save-status {
+            font-size: 13px;
+            color: #a0aec0;
+        }
+        
+        .save-status.saving {
+            color: #ed8936;
+        }
+        
+        .save-status.saved {
+            color: #48bb78;
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        /* Collaboration Panel */
+        .collab-panel {
+            background: white;
+            padding: 15px;
+            border-bottom: 1px solid #e1e8ed;
+        }
+        
+        .collab-status {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .active-users {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #edf2f7;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .user-badge.me {
+            background: #667eea;
+            color: white;
+        }
+        
+        .user-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #48bb78;
+        }
+        
+        .status-dot.disconnected {
+            background: #e53e3e;
+        }
+        
+        /* Editor */
+        .editor-container {
+            max-width: 900px;
+            margin: 40px auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            min-height: calc(100vh - 200px);
+        }
+        
+        #editor {
+            width: 100%;
+            min-height: calc(100vh - 200px);
+            padding: 60px;
+            border: none;
+            font-size: 16px;
+            line-height: 1.6;
+            resize: none;
+            font-family: 'Georgia', serif;
+        }
+        
+        #editor:focus {
+            outline: none;
+        }
+        
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .loading-content {
+            text-align: center;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #e2e8f0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <div>Loading document...</div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <a href="drive.html" class="back-btn">← Back to Drive</a>
+            <div class="doc-title-container">
+                <input type="text" id="doc-title" value="Untitled Document">
+                <span class="save-status" id="save-status">Saved</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <span id="user-name"></span>
+        </div>
+    </div>
+
+    <!-- Collaboration Panel -->
+    <div class="collab-panel">
+        <div class="collab-status">
+            <div class="active-users" id="active-users">
+                <span style="color: #a0aec0; font-size: 13px;">Loading...</span>
+            </div>
+            <div class="connection-status">
+                <span class="status-dot disconnected" id="status-dot"></span>
+                <span id="status-text">Connecting...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Editor -->
+    <div class="editor-container">
+        <textarea id="editor" placeholder="Start typing..."></textarea>
+    </div>
+
+    <script>
+        // Global state
+        let clerkToken = null;
+        let ws = null;
+        let documentId = null;
+        let currentUserId = null;
+        let document = null;
+        let lastValue = '';
+        let saveTimeout = null;
+        let isLocalChange = false;
+
+        // API Configuration
+        const MDB_SERVICE = 'http://localhost:8080';
+        const COLLAB_SERVICE = 'ws://localhost:8081';
+
+        // Get document ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        documentId = urlParams.get('docId');
+
+        if (!documentId) {
+            alert('No document ID provided');
+            window.location.href = 'drive.html';
+        }
+
+        // Initialize
+        window.addEventListener('load', async () => {
+            try {
+                await Clerk.load();
+                
+                if (!Clerk.user) {
+                    window.location.href = 'index.html';
+                    return;
+                }
+                
+                currentUserId = Clerk.user.id;
+                clerkToken = await Clerk.session.getToken();
+                
+                // Update UI
+                const email = Clerk.user.primaryEmailAddress?.emailAddress || '';
+                document.getElementById('user-name').textContent = email.split('@')[0];
+                
+                // Load document
+                await loadDocument();
+                
+                // Connect to collaboration
+                connectWebSocket();
+                
+                // Hide loading
+                document.getElementById('loading').style.display = 'none';
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                alert('Failed to load document');
+                window.location.href = 'drive.html';
+            }
+        });
+
+        // Load document from mdb-service
+        async function loadDocument() {
+            try {
+                const response = await fetch(`${MDB_SERVICE}/api/documents/${documentId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${clerkToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    document = await response.json();
+                    
+                    // Set title and content
+                    document.getElementById('doc-title').value = document.title || 'Untitled Document';
+                    document.getElementById('editor').value = document.content || '';
+                    lastValue = document.content || '';
+                    
+                } else {
+                    throw new Error('Failed to load document');
+                }
+            } catch (error) {
+                console.error('Error loading document:', error);
+                alert('Failed to load document');
+                window.location.href = 'drive.html';
+            }
+        }
+
+        // Connect to WebSocket for real-time collaboration
+        function connectWebSocket() {
+            updateConnectionStatus('connecting', 'Connecting...');
+            
+            ws = new WebSocket(`${COLLAB_SERVICE}/ws/docs?token=${encodeURIComponent(clerkToken)}`);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateConnectionStatus('connected', 'Connected');
+                
+                // Join document session
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    documentId: documentId,
+                    userId: currentUserId
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                handleServerMessage(msg);
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateConnectionStatus('disconnected', 'Disconnected');
+                
+                // Try to reconnect after 3 seconds
+                setTimeout(() => {
+                    if (ws.readyState === WebSocket.CLOSED) {
+                        connectWebSocket();
+                    }
+                }, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        // Handle server messages
+        function handleServerMessage(msg) {
+            switch (msg.type) {
+                case 'init':
+                    // Server sent initial content (may be more recent)
+                    if (msg.version > document.version) {
+                        document.getElementById('editor').value = msg.content || '';
+                        lastValue = msg.content || '';
+                    }
+                    updateActiveUsers(msg.activeUsers || []);
+                    break;
+                    
+                case 'edit':
+                    // Remote user made an edit
+                    if (msg.edit.userId !== currentUserId) {
+                        applyRemoteEdit(msg.edit);
+                    }
+                    break;
+                    
+                case 'user_joined':
+                    console.log('User joined:', msg.userId);
+                    updateActiveUsers(msg.activeUsers || []);
+                    break;
+                    
+                case 'user_left':
+                    console.log('User left:', msg.userId);
+                    break;
+                    
+                case 'error':
+                    console.error('Server error:', msg.error);
+                    break;
+            }
+        }
+
+        // Apply remote edit
+        function applyRemoteEdit(edit) {
+            isLocalChange = true;
+            const editor = document.getElementById('editor');
+            let text = editor.value;
+            
+            switch (edit.type) {
+                case 'insert':
+                    text = text.slice(0, edit.position) + edit.content + text.slice(edit.position);
+                    break;
+                case 'delete':
+                    text = text.slice(0, edit.position) + text.slice(edit.position + edit.deleteCount);
+                    break;
+                case 'replace':
+                    text = text.slice(0, edit.position) + edit.content + text.slice(edit.position + edit.deleteCount);
+                    break;
+            }
+            
+            editor.value = text;
+            lastValue = text;
+            isLocalChange = false;
+        }
+
+        // Update active users
+        function updateActiveUsers(users) {
+            const container = document.getElementById('active-users');
+            
+            if (users.length === 0) {
+                container.innerHTML = '<span style="color: #a0aec0; font-size: 13px;">Only you</span>';
+                return;
+            }
+            
+            const html = users.map(user => {
+                const isMe = user.userId === currentUserId;
+                return `
+                    <div class="user-badge ${isMe ? 'me' : ''}">
+                        <span class="user-dot"></span>
+                        ${isMe ? 'You' : user.userId.substring(0, 10)}
+                    </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = html;
+        }
+
+        // Update connection status
+        function updateConnectionStatus(status, text) {
+            const dot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+            
+            dot.className = 'status-dot';
+            if (status === 'disconnected') {
+                dot.classList.add('disconnected');
+            }
+            
+            statusText.textContent = text;
+        }
+
+        // Editor input handler
+        document.getElementById('editor').addEventListener('input', (e) => {
+            if (isLocalChange) return;
+            
+            const newValue = e.target.value;
+            
+            // Send edit to WebSocket
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                if (newValue.length > lastValue.length) {
+                    // Insert
+                    const pos = findDiffStart(lastValue, newValue);
+                    const inserted = newValue.slice(pos, pos + (newValue.length - lastValue.length));
+                    
+                    ws.send(JSON.stringify({
+                        type: 'edit',
+                        documentId: documentId,
+                        userId: currentUserId,
+                        edit: {
+                            userId: currentUserId,
+                            type: 'insert',
+                            position: pos,
+                            content: inserted,
+                            deleteCount: 0,
+                            clientVersion: 0
+                        }
+                    }));
+                } else if (newValue.length < lastValue.length) {
+                    // Delete
+                    const pos = findDiffStart(lastValue, newValue);
+                    const deleteCount = lastValue.length - newValue.length;
+                    
+                    ws.send(JSON.stringify({
+                        type: 'edit',
+                        documentId: documentId,
+                        userId: currentUserId,
+                        edit: {
+                            userId: currentUserId,
+                            type: 'delete',
+                            position: pos,
+                            content: '',
+                            deleteCount: deleteCount,
+                            clientVersion: 0
+                        }
+                    }));
+                }
+            }
+            
+            lastValue = newValue;
+            
+            // Auto-save to mdb-service
+            updateSaveStatus('saving');
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(saveDocument, 2000);
+        });
+
+        // Title change handler
+        document.getElementById('doc-title').addEventListener('input', () => {
+            updateSaveStatus('saving');
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(saveDocument, 2000);
+        });
+
+        // Save document to mdb-service
+        async function saveDocument() {
+            const title = document.getElementById('doc-title').value;
+            const content = document.getElementById('editor').value;
+            
+            try {
+                const response = await fetch(`${MDB_SERVICE}/api/documents/${documentId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${clerkToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ title, content })
+                });
+                
+                if (response.ok) {
+                    updateSaveStatus('saved');
+                } else {
+                    updateSaveStatus('error');
+                }
+            } catch (error) {
+                console.error('Error saving:', error);
+                updateSaveStatus('error');
+            }
+        }
+
+        // Update save status
+        function updateSaveStatus(status) {
+            const statusEl = document.getElementById('save-status');
+            
+            switch(status) {
+                case 'saving':
+                    statusEl.textContent = 'Saving...';
+                    statusEl.className = 'save-status saving';
+                    break;
+                case 'saved':
+                    statusEl.textContent = 'Saved';
+                    statusEl.className = 'save-status saved';
+                    break;
+                case 'error':
+                    statusEl.textContent = 'Error saving';
+                    statusEl.className = 'save-status';
+                    break;
+            }
+        }
+
+        // Find diff start position
+        function findDiffStart(oldStr, newStr) {
+            let i = 0;
+            while (i < oldStr.length && i < newStr.length && oldStr[i] === newStr[i]) {
+                i++;
+            }
+            return i;
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'leave',
+                    documentId: documentId,
+                    userId: currentUserId
+                }));
+                ws.close();
+            }
+        });
+    </script>
+</body>
+</html>

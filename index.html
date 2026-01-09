@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified Drive - Sign In</title>
+    
+    <!-- Load Clerk SDK -->
+    <script 
+        async 
+        crossorigin="anonymous"
+        data-clerk-publishable-key="pk_test_c2FjcmVkLXRlcm1pdGUtMjUuY2xlcmsuYWNjb3VudHMuZGV2JA"
+        src="https://sacred-termite-25.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .landing-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 60px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .logo {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            font-size: 32px;
+            color: #1a202c;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #718096;
+            font-size: 16px;
+            margin-bottom: 40px;
+        }
+        
+        .features {
+            text-align: left;
+            margin: 30px 0;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }
+        
+        .feature {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            color: #4a5568;
+        }
+        
+        .feature:last-child {
+            margin-bottom: 0;
+        }
+        
+        .feature-icon {
+            font-size: 24px;
+            margin-right: 15px;
+        }
+        
+        #sign-in-container {
+            margin-top: 30px;
+        }
+        
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #e2e8f0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-top: 20px;
+            color: #667eea;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="landing-container">
+        <div class="logo">🚀</div>
+        <h1>Unified Drive</h1>
+        <p class="subtitle">Your files and documents, all in one place</p>
+        
+        <div class="features">
+            <div class="feature">
+                <span class="feature-icon">📁</span>
+                <span>Store and organize files</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">📝</span>
+                <span>Create and edit documents</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">🤝</span>
+                <span>Real-time collaboration</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">🔒</span>
+                <span>Secure and private</span>
+            </div>
+        </div>
+        
+        <div id="sign-in-container"></div>
+    </div>
+
+    <script>
+        window.addEventListener('load', async () => {
+            const container = document.getElementById('sign-in-container');
+            
+            // Show loading
+            container.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Loading...</div>
+                </div>
+            `;
+            
+            try {
+                await Clerk.load();
+                
+                if (Clerk.user) {
+                    // User already signed in, redirect to drive
+                    container.innerHTML = `
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <div class="loading-text">Signing you in...</div>
+                        </div>
+                    `;
+                    window.location.href = 'drive.html';
+                } else {
+                    // Show sign-in form
+                    container.innerHTML = '';
+                    Clerk.mountSignIn(container, {
+                        afterSignInUrl: 'drive.html',
+                        appearance: {
+                            elements: {
+                                rootBox: 'w-full',
+                                card: 'shadow-none'
+                            }
+                        }
+                    });
+                }
+                
+                // Listen for sign-in
+                Clerk.addListener((event) => {
+                    if (event.type === 'session.created') {
+                        window.location.href = 'drive.html';
+                    }
+                });
+                
+            } catch (error) {
+                container.innerHTML = `
+                    <div style="color: #e53e3e; padding: 20px;">
+                        <strong>Error loading authentication</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

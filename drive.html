@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified Drive</title>
+    
+    <!-- Load Clerk SDK -->
+    <script 
+        async 
+        crossorigin="anonymous"
+        data-clerk-publishable-key="pk_test_c2FjcmVkLXRlcm1pdGUtMjUuY2xlcmsuYWNjb3VudHMuZGV2JA"
+        src="https://sacred-termite-25.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+        }
+        
+        /* Header */
+        .header {
+            background: white;
+            border-bottom: 1px solid #e1e8ed;
+            padding: 0 30px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            font-size: 20px;
+            font-weight: 600;
+            color: #1a202c;
+        }
+        
+        .logo-icon {
+            font-size: 28px;
+            margin-right: 10px;
+        }
+        
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .sign-out-btn {
+            padding: 8px 16px;
+            background: #e53e3e;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .sign-out-btn:hover {
+            background: #c53030;
+        }
+        
+        /* Main Content */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 30px;
+            border-bottom: 2px solid #e1e8ed;
+            margin-bottom: 30px;
+        }
+        
+        .tab {
+            padding: 12px 0;
+            font-size: 16px;
+            font-weight: 500;
+            color: #718096;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover {
+            color: #4a5568;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .search-box {
+            position: relative;
+            flex: 1;
+            max-width: 400px;
+        }
+        
+        .search-box input {
+            width: 100%;
+            padding: 10px 40px 10px 15px;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .search-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #a0aec0;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: #4a5568;
+            border: 1px solid #e1e8ed;
+        }
+        
+        .btn-secondary:hover {
+            background: #f7fafc;
+        }
+        
+        /* Content Sections */
+        .content-section {
+            display: none;
+        }
+        
+        .content-section.active {
+            display: block;
+        }
+        
+        /* Items Grid */
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .item-card {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .item-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .item-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .item-name {
+            font-weight: 600;
+            color: #1a202c;
+            margin-bottom: 5px;
+            word-break: break-word;
+        }
+        
+        .item-meta {
+            font-size: 13px;
+            color: #a0aec0;
+        }
+        
+        .item-type {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #edf2f7;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            color: #4a5568;
+            margin-top: 8px;
+        }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #a0aec0;
+        }
+        
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #e2e8f0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .modal-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #4a5568;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo">
+            <span class="logo-icon">🚀</span>
+            <span>Unified Drive</span>
+        </div>
+        <div class="user-menu">
+            <div class="user-info">
+                <div class="user-avatar" id="user-avatar"></div>
+                <span id="user-name"></span>
+            </div>
+            <button class="sign-out-btn" onclick="signOut()">Sign Out</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('all')">
+                📦 All Items
+            </div>
+            <div class="tab" onclick="switchTab('documents')">
+                📝 My Documents
+            </div>
+            <div class="tab" onclick="switchTab('files')">
+                📁 My Files
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="search-box">
+                <input type="text" placeholder="Search files and documents..." id="search-input" onkeyup="handleSearch()">
+                <span class="search-icon">🔍</span>
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary" onclick="showUploadModal()">📤 Upload File</button>
+                <button class="btn btn-primary" onclick="showCreateDocModal()">+ New Document</button>
+            </div>
+        </div>
+
+        <!-- All Items Section -->
+        <div class="content-section active" id="all-section">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>Loading your items...</div>
+            </div>
+        </div>
+
+        <!-- Documents Section -->
+        <div class="content-section" id="documents-section">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>Loading documents...</div>
+            </div>
+        </div>
+
+        <!-- Files Section -->
+        <div class="content-section" id="files-section">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>Loading files...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Document Modal -->
+    <div class="modal" id="create-doc-modal">
+        <div class="modal-content">
+            <div class="modal-header">Create New Document</div>
+            <div class="form-group">
+                <label>Document Name</label>
+                <input type="text" id="doc-title" placeholder="Untitled Document">
+            </div>
+            <div class="form-group">
+                <label>Initial Content (optional)</label>
+                <textarea id="doc-content" placeholder="Start typing..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('create-doc-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createDocument()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload File Modal -->
+    <div class="modal" id="upload-modal">
+        <div class="modal-content">
+            <div class="modal-header">Upload File</div>
+            <div class="form-group">
+                <label>Select File</label>
+                <input type="file" id="file-input">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('upload-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="uploadFile()">Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let clerkToken = null;
+        let documents = [];
+        let files = [];
+        let allItems = [];
+        let currentTab = 'all';
+
+        // API Configuration
+        const MDB_SERVICE = 'http://localhost:8080';
+        const DRIVE_SERVICE = 'http://localhost:8080'; // Your colleague's service
+
+        // Initialize
+        window.addEventListener('load', async () => {
+            try {
+                await Clerk.load();
+                
+                if (!Clerk.user) {
+                    // Not signed in, redirect to landing
+                    window.location.href = 'index.html';
+                    return;
+                }
+                
+                // Get token
+                clerkToken = await Clerk.session.getToken();
+                
+                // Update UI with user info
+                const email = Clerk.user.primaryEmailAddress?.emailAddress || '';
+                document.getElementById('user-name').textContent = email.split('@')[0];
+                document.getElementById('user-avatar').textContent = email.charAt(0).toUpperCase();
+                
+                // Load data
+                await loadAllData();
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                alert('Failed to load. Please sign in again.');
+                window.location.href = 'index.html';
+            }
+        });
+
+        // Load all data
+        async function loadAllData() {
+            await Promise.all([
+                loadDocuments(),
+                loadFiles()
+            ]);
+            
+            // Combine and display
+            combineAndDisplay();
+        }
+
+        // Load documents from mdb-service
+        async function loadDocuments() {
+            try {
+                const response = await fetch(`${MDB_SERVICE}/api/documents`, {
+                    headers: {
+                        'Authorization': `Bearer ${clerkToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    documents = await response.json();
+                    console.log('Loaded documents:', documents.length);
+                } else {
+                    console.error('Failed to load documents:', response.status);
+                    documents = [];
+                }
+            } catch (error) {
+                console.error('Error loading documents:', error);
+                documents = [];
+            }
+        }
+
+        // Load files from drive-backend
+        async function loadFiles() {
+            try {
+                const response = await fetch(`${DRIVE_SERVICE}/v1/root/children`, {
+                    headers: {
+                        'Authorization': `Bearer ${clerkToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    files = await response.json();
+                    console.log('Loaded files:', files.length);
+                } else {
+                    console.error('Failed to load files:', response.status);
+                    files = [];
+                }
+            } catch (error) {
+                console.error('Error loading files:', error);
+                files = [];
+            }
+        }
+
+        // Combine and display items
+        function combineAndDisplay() {
+            // Add type to each item
+            const docsWithType = documents.map(doc => ({
+                ...doc,
+                itemType: 'document',
+                icon: '📝',
+                displayName: doc.title || 'Untitled'
+            }));
+            
+            const filesWithType = files.map(file => ({
+                ...file,
+                itemType: 'file',
+                icon: file.type === 'FOLDER' ? '📁' : getFileIcon(file.mimeType),
+                displayName: file.name
+            }));
+            
+            allItems = [...docsWithType, ...filesWithType];
+            
+            // Display based on current tab
+            displayItems();
+        }
+
+        // Get icon for file type
+        function getFileIcon(mimeType) {
+            if (!mimeType) return '📄';
+            if (mimeType.startsWith('image/')) return '🖼️';
+            if (mimeType.startsWith('video/')) return '🎥';
+            if (mimeType.startsWith('audio/')) return '🎵';
+            if (mimeType.includes('pdf')) return '📕';
+            if (mimeType.includes('word') || mimeType.includes('document')) return '📘';
+            if (mimeType.includes('sheet') || mimeType.includes('excel')) return '📗';
+            if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📙';
+            if (mimeType.includes('zip') || mimeType.includes('archive')) return '🗜️';
+            return '📄';
+        }
+
+        // Display items based on current tab
+        function displayItems() {
+            let itemsToShow = [];
+            let sectionId = '';
+            
+            switch(currentTab) {
+                case 'all':
+                    itemsToShow = allItems;
+                    sectionId = 'all-section';
+                    break;
+                case 'documents':
+                    itemsToShow = allItems.filter(item => item.itemType === 'document');
+                    sectionId = 'documents-section';
+                    break;
+                case 'files':
+                    itemsToShow = allItems.filter(item => item.itemType === 'file');
+                    sectionId = 'files-section';
+                    break;
+            }
+            
+            const section = document.getElementById(sectionId);
+            
+            if (itemsToShow.length === 0) {
+                section.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <div>No items found</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const html = `
+                <div class="items-grid">
+                    ${itemsToShow.map(item => `
+                        <div class="item-card" onclick="openItem('${item.itemType}', '${item.id || item.id}')">
+                            <div class="item-icon">${item.icon}</div>
+                            <div class="item-name">${escapeHtml(item.displayName)}</div>
+                            <div class="item-meta">
+                                ${item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : 'Recent'}
+                            </div>
+                            <div class="item-type">${item.itemType === 'document' ? 'Document' : (item.type || 'File')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            section.innerHTML = html;
+        }
+
+        // Switch tabs
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            // Update tab UI
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update section UI
+            document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+            document.getElementById(`${tab}-section`).classList.add('active');
+            
+            // Display items
+            displayItems();
+        }
+
+        // Open item (document or file)
+        function openItem(type, id) {
+            if (type === 'document') {
+                // Open document in editor
+                window.location.href = `editor.html?docId=${id}`;
+            } else {
+                // For files, could download or open in new tab
+                alert(`Opening file: ${id}\n\nDownload functionality coming soon!`);
+                // TODO: Implement file download/view
+            }
+        }
+
+        // Show modals
+        function showCreateDocModal() {
+            document.getElementById('create-doc-modal').classList.add('active');
+        }
+
+        function showUploadModal() {
+            document.getElementById('upload-modal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // Create document
+        async function createDocument() {
+            const title = document.getElementById('doc-title').value.trim() || 'Untitled Document';
+            const content = document.getElementById('doc-content').value.trim();
+            
+            try {
+                const response = await fetch(`${MDB_SERVICE}/api/documents`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${clerkToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ title, content })
+                });
+                
+                if (response.ok) {
+                    const doc = await response.json();
+                    closeModal('create-doc-modal');
+                    
+                    // Clear form
+                    document.getElementById('doc-title').value = '';
+                    document.getElementById('doc-content').value = '';
+                    
+                    // Redirect to editor
+                    window.location.href = `editor.html?docId=${doc.id}`;
+                } else {
+                    alert('Failed to create document');
+                }
+            } catch (error) {
+                console.error('Error creating document:', error);
+                alert('Error creating document');
+            }
+        }
+
+        // Upload file
+        async function uploadFile() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file');
+                return;
+            }
+            
+            // TODO: Implement file upload to drive-backend
+            alert('File upload coming soon!\n\nFile: ' + file.name);
+            closeModal('upload-modal');
+        }
+
+        // Search
+        function handleSearch() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            
+            if (!query) {
+                displayItems();
+                return;
+            }
+            
+            const filtered = allItems.filter(item => 
+                item.displayName.toLowerCase().includes(query)
+            );
+            
+            // Display filtered items
+            const section = document.querySelector('.content-section.active');
+            
+            if (filtered.length === 0) {
+                section.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <div>No results for "${escapeHtml(query)}"</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const html = `
+                <div class="items-grid">
+                    ${filtered.map(item => `
+                        <div class="item-card" onclick="openItem('${item.itemType}', '${item.id}')">
+                            <div class="item-icon">${item.icon}</div>
+                            <div class="item-name">${escapeHtml(item.displayName)}</div>
+                            <div class="item-meta">
+                                ${item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : 'Recent'}
+                            </div>
+                            <div class="item-type">${item.itemType === 'document' ? 'Document' : (item.type || 'File')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            section.innerHTML = html;
+        }
+
+        // Sign out
+        async function signOut() {
+            await Clerk.signOut();
+            window.location.href = 'index.html';
+        }
+
+        // Utility
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
